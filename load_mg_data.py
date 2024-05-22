@@ -12,13 +12,13 @@ def load_microgrid_data(dir):
         filepath = os.path.join(dir, filename)
         if filename=='Building_1.csv':
             df = pd.read_csv(filepath)
-            df['DayType'] = df['Day Type'].astype('int64').astype('category')
+            df['DayType'] = df['Day Type'].astype('int64').replace({2:'Mon',3:'Tue',4:'Wed',5:'Thu',6:'Fri',7:'Sat',8:'Holiday',1:'Sun'}).astype('category')
             df['DaylightSavings'] = df['Daylight Savings Status'].astype('int64').astype('category')
-            df['NSLoad'] = df.iloc[:,7]+df.iloc[:,8]+df.iloc[:,9]
+            df['Load'] = df.iloc[:,7]+df.iloc[:,8]+df.iloc[:,9]
             df.drop(df.columns[2:10], axis=1, inplace=True)
         else:
             temp = pd.read_csv(filepath)
-            df['NSLoad'] += temp.iloc[:,7]+temp.iloc[:,8]+temp.iloc[:,9]
+            df['Load'] += temp.iloc[:,7]+temp.iloc[:,8]+temp.iloc[:,9]
 
     # solar installed data
     filepath = os.path.join(dir, 'building_attributes_base.json')
