@@ -6,6 +6,7 @@ import re
 
 def load_microgrid_data(dir):
     # demand data
+    n = 1
     for filename in os.listdir(dir):
         if not filename.startswith('Building_'):
             continue
@@ -15,10 +16,13 @@ def load_microgrid_data(dir):
             df['DayType'] = df['Day Type'].astype('int64').replace({2:'Mon',3:'Tue',4:'Wed',5:'Thu',6:'Fri',7:'Sat',8:'Holiday',1:'Sun'}).astype('category')
             df['DaylightSavings'] = df['Daylight Savings Status'].astype('int64').astype('category')
             df['Load'] = df.iloc[:,7]+df.iloc[:,8]+df.iloc[:,9]
+            df[f'Load_{n}'] = df.iloc[:,7]+df.iloc[:,8]+df.iloc[:,9]
             df.drop(df.columns[2:10], axis=1, inplace=True)
         else:
             temp = pd.read_csv(filepath)
             df['Load'] += temp.iloc[:,7]+temp.iloc[:,8]+temp.iloc[:,9]
+            df[f'Load_{n}'] = temp.iloc[:,7]+temp.iloc[:,8]+temp.iloc[:,9]
+        n += 1
 
     # solar installed data
     filepath = os.path.join(dir, 'building_attributes_base.json')
