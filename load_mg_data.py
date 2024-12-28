@@ -5,6 +5,25 @@ import numpy as np
 import re
 
 def load_microgrid_data(dir):
+    """
+    Loads and processes microgrid data from the specified directory.
+
+    This function performs the following steps:
+    1. Loads demand (load) data from CSV files starting with 'Building_'.
+    2. Processes the demand data to calculate total load and individual building loads.
+    3. Loads solar power installation data from a JSON file.
+    4. Loads solar generation data from a CSV file and calculates total solar generation.
+    5. Calculates net load by subtracting solar generation from total load.
+    6. Creates lagged features and rolling statistics.
+    7. Loads electricity pricing data from a CSV file and merges it with the main dataframe.
+
+    Parameters:
+    dir (str): The directory containing the microgrid data files.
+
+    Returns:
+    pd.DataFrame: A pandas DataFrame containing the processed microgrid data.
+    """
+
     # demand data
     n = 1
     for filename in os.listdir(dir):
@@ -27,20 +46,27 @@ def load_microgrid_data(dir):
         n += 1
 
     # solar installed data
-    filepath = os.path.join(dir, 'building_attributes_base.json')
+    filepath = os.path.join(dir, 'building_attributes.json')
     with open(filepath,'r') as f:
-        solar = re.findall('(?<="Solar_Power_Installed\(kW\)":)\d+',f.read())
-        solar = [int(s) for s in solar]
+        power_installed = re.findall('(?<="Solar_Power_Installed\(kW\)":)\d+',f.read())
+        power_installed = [int(s) for s in power_installed]
         
     # solar generation data
     filepath = os.path.join(dir, 'solar_generation_1kW.csv')
     temp = pd.read_csv(filepath)
     df['SolarGen'] = 0
-    for val in solar:
-        df['SolarGen'] += val*temp.iloc[:,1]/100
+    for val in power_installed:
+        df['SolarGen'] += val*temp.iloc[:,1]/1000
 
     # net load
     df['NetLoad'] = df['Load'] - df['SolarGen']
+    # lags
+    lags = [1, 2, 3, 4, 5, 6, 22, 23, 24, 48]
+    for lag in lags:
+        df[f'NetLoadLag{lag}'] = df['NetLoad'].shift(lag)
+    df['NetLoadMax24'] = df['NetLoad'].rolling(window=24, min_periods=1).max()
+    df['NetLoadMin24'] = df['NetLoad'].rolling(window=24, min_periods=1).min()
+    df['NetLoadDiff24'] = df['NetLoad'].diff(24)
 
     # rates
     # filepath = os.path.join(dir, 'prices.csv')
@@ -57,8 +83,15 @@ def load_microgrid_data(dir):
     filepath = os.path.join(dir, 'weather_data.csv')
     temp = pd.read_csv(filepath)
     df = pd.concat([df,temp],axis=1)
-
     df['Radiation [W/m2]'] = df['Diffuse Solar Radiation [W/m2]'] + df['Direct Solar Radiation [W/m2]']
+    df['6h Prediction Radiation [W/m2]'] = df['6h Prediction Diffuse Solar Radiation [W/m2]'] + df['6h Prediction Direct Solar Radiation [W/m2]']
+    df['12h Prediction Radiation [W/m2]'] = df['12h Prediction Diffuse Solar Radiation [W/m2]'] + df['12h Prediction Direct Solar Radiation [W/m2]']
+    df['24h Prediction Radiation [W/m2]'] = df['24h Prediction Diffuse Solar Radiation [W/m2]'] + df['24h Prediction Direct Solar Radiation [W/m2]']
+    # temperature lags
+    for lag in [1, 2, 3, 22, 23, 24]:
+        df[f'TempLag{lag}'] = df['Outdoor Drybulb Temperature [C]'].shift(lag)
+    df['TempMean24'] = df['Outdoor Drybulb Temperature [C]'].rolling(window=24, min_periods=1).mean()
+    df['TempMean1W'] = df['Outdoor Drybulb Temperature [C]'].rolling(window=168, min_periods=21).mean()
 
     # dummy timestamp for easier reference
     df['Timestamp'] = pd.date_range(start='2016-01-01 01:00', periods=4*365*24, freq='h')
@@ -68,6 +101,6 @@ def load_microgrid_data(dir):
         for id in [index for index, col in enumerate(df.columns) if str(h)+'h Prediction' in col]:
             df.iloc[h:df.shape[0],id] = df.iloc[0:df.shape[0]-h,id]
             
-    # drop first 24 hours due to lack of forecasts
-    df = df.iloc[24:]
+    # drop first 48 hours due to missing data
+    df = df.iloc[48:]
     df = df.reset_index(drop=True)
